@@ -84,7 +84,29 @@ void uniformDiskSamples( const in vec2 randomSeed ) {
 }
 
 float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
-	return 1.0;
+  poissonDiskSamples(uv);
+
+  float textureSize = 2048.0;
+  float filterStride = 5.0;
+  float filterRange = filterStride/ textureSize;
+
+  float blocker = 0.0;
+  int j = 0;
+  for(int i = 0; i < BLOCKER_SEARCH_NUM_SAMPLES; ++i) {
+    vec2 newCoord = poissonDisk[i] * filterRange + uv;
+    vec4 shadowColor = texture2D(shadowMap, newCoord);
+    float closestDepth = unpack(shadowColor);
+    if(closestDepth < zReceiver) {
+      blocker += closestDepth;
+      ++j;
+    }
+  }
+  if (j == 0) {
+    return 1.0;
+  }
+
+  blocker = blocker / float(j);
+	return blocker;
 }
 
 float useShadowMap(sampler2D shadowMap, vec4 shadowCoord);
@@ -108,15 +130,28 @@ float PCF(sampler2D shadowMap, vec4 coords) {
 }
 
 float PCSS(sampler2D shadowMap, vec4 coords){
-
   // STEP 1: avgblocker depth
+  float blocker = findBlocker(shadowMap, coords.xy, coords. z);
 
   // STEP 2: penumbra size
+  float penumbra = (coords.z - blocker) * float(10.0)/ blocker;
+  float size = max(penumbra, 0.0);
 
   // STEP 3: filtering
-  
-  return 1.0;
+  poissonDiskSamples(coords.xy);
 
+  float textureSize = 2048.0;
+  float filterStride = 2.0;
+  float filterRange = size * filterStride/ textureSize;
+
+  float visibility = 0.0;
+  for(int i = 0; i < NUM_SAMPLES; ++i) {
+    vec2 newCoord = poissonDisk[i] * filterRange + coords.xy;
+    visibility += useShadowMap(shadowMap, vec4(newCoord.xy, coords.zw));
+  }
+  visibility = visibility / float(NUM_SAMPLES);
+  
+  return visibility;
 }
 
 
@@ -163,8 +198,8 @@ void main(void) {
 
   float visibility;
   // visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
-  visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
-  //visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
+  // visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
+  visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
   vec3 phongColor = blinnPhong();
 
